@@ -48,12 +48,31 @@ _TEMPORAL_SANDBOX_APP = "temporal-testing"
 _TEMPORAL_SANDBOX_NAME = "temporal-server"
 
 
+def _activity_name(fn: Callable) -> str:
+    """Return the Temporal-registered name for an activity function.
+
+    Honors ``@activity.defn(name="custom")`` instead of just ``fn.__name__``.
+    """
+    defn = getattr(fn, "__temporal_activity_definition", None)
+    if defn is not None:
+        name = getattr(defn, "name", None)
+        if name:
+            return name
+    return fn.__name__
+
+
 def _ensure_temporal_sandbox() -> tuple[str, str, str]:
     """Idempotently start a Temporal server in a Modal Sandbox.
 
-    Returns ``(server, namespace, ui_url)``. Reuses an existing Sandbox of the
-    same name if one is alive; replaces it if the previous one has terminated.
+    DEV ONLY: this runs Temporal's ``start-dev`` (single-node, in-memory
+    persistence). Not for production. Returns ``(server, namespace, ui_url)``.
+    Reuses an existing Sandbox of the same name if alive; replaces it otherwise.
     """
+    print(
+        "[modaltemporal] WARNING: starting a DEV-MODE Temporal server "
+        "(start-dev, in-memory). Not for production — bring your own Temporal "
+        "for any persistent workload."
+    )
     sandbox_app = modal.App.lookup(_TEMPORAL_SANDBOX_APP, create_if_missing=True)
     image = modal.Image.from_registry("temporalio/temporal:1.7.0")
 
@@ -206,8 +225,11 @@ class Worker:
         timeout: int | None,
         cpu: float | None,
     ) -> None:
-        name = fn.__name__
-        runner_name = f"_mt_run_{name}"
+        # Use the Temporal-resolved name (honors ``@activity.defn(name="...")``)
+        # as the registration key, but use fn.__name__ for the Modal Function
+        # name (always a valid identifier).
+        registered_name = _activity_name(fn)
+        runner_name = f"_mt_run_{fn.__name__}"
         server, namespace = self._server, self._namespace
 
         async def _runner(
@@ -239,7 +261,7 @@ class Worker:
             modal.concurrent(max_inputs=max_inputs)(_runner)
         )
 
-        self._activities[name] = _ActivityReg(
+        self._activities[registered_name] = _ActivityReg(
             fn=fn, runner_name=runner_name, runner_fn=runner_fn
         )
 
@@ -267,6 +289,9 @@ class Worker:
         }
         if with_schedule:
             fn_kwargs["schedule"] = modal.Period(minutes=30)
+            # Two dispatchers polling the same task queue. Temporal delivers
+            # each task to exactly one worker. In case one container dies.
+            fn_kwargs["min_containers"] = 2
         self._dispatcher_fn = self._app.function(**fn_kwargs)(_dispatcher)
 
     def deploy(self) -> None:
@@ -319,8 +344,25 @@ class Worker:
 
 
 # -----------------------------------------------------------------------------
-# Module-level entrypoints.
+# Module-level entrypoints. The cache below is per-Modal-container. Within one
+# container, all invocations reuse a single Temporal Client + gRPC channel.
 # -----------------------------------------------------------------------------
+
+
+_CLIENT_CACHE: dict[tuple[str, str], Client] = {}
+_CLIENT_CACHE_LOCK: asyncio.Lock | None = None
+
+
+async def _get_client(server: str, namespace: str) -> Client:
+    global _CLIENT_CACHE_LOCK
+    if _CLIENT_CACHE_LOCK is None:
+        _CLIENT_CACHE_LOCK = asyncio.Lock()
+    key = (server, namespace)
+    if key not in _CLIENT_CACHE:
+        async with _CLIENT_CACHE_LOCK:
+            if key not in _CLIENT_CACHE:
+                _CLIENT_CACHE[key] = await Client.connect(server, namespace=namespace)
+    return _CLIENT_CACHE[key]
 
 
 async def _run_dispatcher(
@@ -330,12 +372,12 @@ async def _run_dispatcher(
     activity_regs: list[_ActivityReg],
     workflows: list[type],
 ) -> None:
-    client = await Client.connect(server, namespace=namespace)
+    client = await _get_client(server, namespace)
 
-    # Use the captured Function references directly — works in both deploy
-    # and ephemeral modes (no name lookup needed).
+    # Key by Temporal-registered name — matches what the interceptor sees via
+    # ``activity.info().activity_type`` and honors ``@activity.defn(name=...)``.
     funcs: dict[str, modal.Function] = {
-        reg.fn.__name__: reg.runner_fn for reg in activity_regs
+        _activity_name(reg.fn): reg.runner_fn for reg in activity_regs
     }
 
     print(f"[modaltemporal] dispatcher started: task_queue={task_queue!r}")
@@ -363,7 +405,7 @@ async def _run_activity(
     namespace: str,
     heartbeat_timeout_seconds: float | None,
 ) -> None:
-    client = await Client.connect(server, namespace=namespace)
+    client = await _get_client(server, namespace)
     handle = client.get_async_activity_handle(task_token=task_token)
 
     main_task = asyncio.create_task(fn(*args))
@@ -410,10 +452,13 @@ class _DispatchInbound(ActivityInboundInterceptor):
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
         info = activity.info()
-        fn_name = input.fn.__name__
-        modal_func = self._funcs.get(fn_name)
+        # Use the Temporal-registered activity name (honors @activity.defn(name=...)).
+        registered_name = info.activity_type
+        modal_func = self._funcs.get(registered_name)
         if modal_func is None:
-            raise RuntimeError(f"no Modal runner registered for activity {fn_name!r}")
+            raise RuntimeError(
+                f"no Modal runner registered for activity {registered_name!r}"
+            )
 
         heartbeat_seconds = (
             info.heartbeat_timeout.total_seconds() if info.heartbeat_timeout else None

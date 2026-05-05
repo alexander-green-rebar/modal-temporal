@@ -79,3 +79,10 @@ The `@activity.defn`, `@workflow.defn`, `workflow.execute_activity`, and `client
 The `mt.Worker` class replaces `temporalio.worker.Worker` to pass each activity through Modal. 
 
 Everything inside `workflows.py` and `activities.py` is portable Temporal code.
+
+## Location of execution
+
+Activities and workflows run in different places:
+
+- **Activities** each get their own Modal Function. They scale independently, and so may fan out to many containers as are required.
+- **Workflows** all run inside the dispatcher Function. Workflow code is meant to be deterministic orchestration.
