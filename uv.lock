@@ -462,7 +462,7 @@ wheels = [
 [[package]]
 name = "temporal-external-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "modal" },
     { name = "temporalio" },

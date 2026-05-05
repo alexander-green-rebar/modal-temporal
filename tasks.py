@@ -87,9 +87,11 @@ def develop(ctx):
 
 @task
 def stop(ctx):
+    """Tear down the Temporal sandbox and its hosting App."""
     with suppress(Exception):
         sb = modal.Sandbox.from_name(app_name=app_name, name=sandbox_name)
         sb.terminate()
-        ctx.run("uv run modal app stop temporal-testing --yes")
+    with suppress(Exception):
+        ctx.run(f"uv run modal app stop {app_name} --yes")
 
-    print("sandbox terminated and App stopped!")
+    print("Cleaned up: sandbox + Temporal-hosting App.")
