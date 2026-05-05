@@ -45,7 +45,7 @@ uv run launch_many_workflows.py
 
 Go to the Temporal dashboard + Modal UI to see workflows completed and Modal scale up containers.
 
-4. Clean up
+4. Clean up sandbox and App.
 
 ```python
 uv run inv stop

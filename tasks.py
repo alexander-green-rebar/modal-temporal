@@ -90,5 +90,6 @@ def stop(ctx):
     with suppress(Exception):
         sb = modal.Sandbox.from_name(app_name=app_name, name=sandbox_name)
         sb.terminate()
+        ctx.run("uv run modal app stop temporal-testing --yes")
 
-    print("sandbox terminated!")
+    print("sandbox terminated and App stopped!")
