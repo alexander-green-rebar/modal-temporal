@@ -61,6 +61,16 @@ def _activity_name(fn: Callable) -> str:
     return fn.__name__
 
 
+def _with_modaltemporal(image: modal.Image) -> modal.Image:
+    """Bake the ``modaltemporal`` module into a Modal Image.
+
+    Auto-applied to every image the SDK uses (dispatcher + per-activity), so
+    users don't need to remember ``add_local_python_source("modaltemporal")``.
+    Once the package is published to PyPI, swap this for ``pip_install``.
+    """
+    return image.add_local_python_source("modaltemporal")
+
+
 def _ensure_temporal_sandbox() -> tuple[str, str, str]:
     """Idempotently start a Temporal server in a Modal Sandbox.
 
@@ -159,7 +169,7 @@ class Worker:
         self._server = server or os.environ["TEMPORAL_SERVER"]
         self._namespace = namespace or os.environ.get("TEMPORAL_NAMESPACE", "default")
         self._temporal_ui = ui_url or os.environ.get("TEMPORAL_UI")
-        self._dispatcher_image = (
+        self._dispatcher_image = _with_modaltemporal(
             dispatcher_image
             or modal.Image.debian_slim().uv_pip_install("temporalio==1.27.0")
         )
@@ -243,7 +253,7 @@ class Worker:
         _runner.__qualname__ = runner_name
 
         fn_kwargs: dict[str, Any] = {
-            "image": image,
+            "image": _with_modaltemporal(image),
             "env": {"TEMPORAL_SERVER": server, "TEMPORAL_NAMESPACE": namespace},
             "name": runner_name,
             "serialized": True,

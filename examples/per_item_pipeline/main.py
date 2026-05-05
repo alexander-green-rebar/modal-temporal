@@ -25,7 +25,7 @@ app = modal.App("modaltemporal-per-item-pipeline")
 image = (
     modal.Image.debian_slim()
     .uv_pip_install("temporalio==1.27.0")
-    .add_local_python_source("activities", "workflows", "modaltemporal")
+    .add_local_python_source("activities", "workflows")
 )
 
 worker = mt.Worker(
