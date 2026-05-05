@@ -20,6 +20,10 @@ with workflow.unsafe.imports_passed_through():
 import modaltemporal as mt
 
 
+# Demo only. In production, point at your own Temporal by setting
+# TEMPORAL_SERVER and TEMPORAL_NAMESPACE, or passing them to mt.Worker.
+server, namespace = mt.start_dev_temporal()
+
 app = modal.App("modaltemporal-per-item-pipeline")
 
 image = (
@@ -31,8 +35,9 @@ image = (
 worker = mt.Worker(
     app,
     task_queue="per-item-pipeline-queue",
+    server=server,
+    namespace=namespace,
     dispatcher_image=image,
-    auto_start_temporal=True,
 )
 
 # fetch_text — I/O-bound, tolerant of high concurrency per container.

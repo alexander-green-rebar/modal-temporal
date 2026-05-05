@@ -16,6 +16,10 @@ with workflow.unsafe.imports_passed_through():
 import modaltemporal as mt
 
 
+# Demo only. In production, point at your own Temporal by setting
+# TEMPORAL_SERVER and TEMPORAL_NAMESPACE, or passing them to mt.Worker.
+server, namespace = mt.start_dev_temporal()
+
 app = modal.App("modaltemporal-greeting")
 
 image = (
@@ -27,8 +31,9 @@ image = (
 worker = mt.Worker(
     app,
     task_queue="greeting-queue",
+    server=server,
+    namespace=namespace,
     dispatcher_image=image,
-    auto_start_temporal=True,
 )
 
 worker.activity(image=image, max_inputs=20)(greet)

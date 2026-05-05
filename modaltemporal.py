@@ -1,4 +1,4 @@
-"""modaltemporal: run Temporal activities as Modal function invocations.
+"""modaltemporal: a reference for running Temporal activities as Modal Functions.
 
 A ``Worker`` deploys two kinds of Modal Functions to a single Modal App:
 
@@ -71,17 +71,19 @@ def _with_modaltemporal(image: modal.Image) -> modal.Image:
     return image.add_local_python_source("modaltemporal")
 
 
-def _ensure_temporal_sandbox() -> tuple[str, str, str]:
-    """Idempotently start a Temporal server in a Modal Sandbox.
+def start_dev_temporal() -> tuple[str, str]:
+    """Spin up a dev Temporal server in a Modal Sandbox. Returns ``(server, namespace)``.
 
-    DEV ONLY: this runs Temporal's ``start-dev`` (single-node, in-memory
-    persistence). Not for production. Returns ``(server, namespace, ui_url)``.
-    Reuses an existing Sandbox of the same name if alive; replaces it otherwise.
+    DEV / TESTING ONLY. Runs Temporal's ``start-dev`` (single-node, in-memory
+    persistence). For real workloads, point your Worker at your own Temporal
+    server (Temporal Cloud, self-hosted) instead of calling this.
+
+    Idempotent: reuses an existing Sandbox of the same name if alive, replaces
+    it otherwise.
     """
     print(
-        "[modaltemporal] WARNING: starting a DEV-MODE Temporal server "
-        "(start-dev, in-memory). Not for production — bring your own Temporal "
-        "for any persistent workload."
+        "[modaltemporal] WARNING: starting a DEV-MODE Temporal Sandbox "
+        "(start-dev, in-memory). For real workloads, bring your own Temporal."
     )
     sandbox_app = modal.App.lookup(_TEMPORAL_SANDBOX_APP, create_if_missing=True)
     image = modal.Image.from_registry("temporalio/temporal:1.7.0")
@@ -117,7 +119,8 @@ def _ensure_temporal_sandbox() -> tuple[str, str, str]:
     tunnels = sb.tunnels()
     server = f"{tunnels[7233].unencrypted_host}:{tunnels[7233].unencrypted_port}"
     ui = f"https://{tunnels[8233].host}"
-    return server, "default", ui
+    print(f"[modaltemporal] Temporal UI: {ui}")
+    return server, "default"
 
 
 @dataclass
@@ -152,23 +155,11 @@ class Worker:
         server: str | None = None,
         namespace: str | None = None,
         dispatcher_image: modal.Image | None = None,
-        auto_start_temporal: bool = False,
     ) -> None:
-        ui_url: str | None = None
-        if auto_start_temporal and server is None:
-            # auto_start_temporal owns the Sandbox lifecycle — ignore TEMPORAL_SERVER
-            # env vars in this path so a stale activate file doesn't silently
-            # redirect us to a dead Sandbox.
-            print("[modaltemporal] auto_start_temporal=True; ensuring Sandbox…")
-            server, ns, ui_url = _ensure_temporal_sandbox()
-            namespace = namespace or ns
-            print(f"[modaltemporal] Temporal UI: {ui_url}")
-
         self._app = app
         self._task_queue = task_queue
         self._server = server or os.environ["TEMPORAL_SERVER"]
         self._namespace = namespace or os.environ.get("TEMPORAL_NAMESPACE", "default")
-        self._temporal_ui = ui_url or os.environ.get("TEMPORAL_UI")
         self._dispatcher_image = _with_modaltemporal(
             dispatcher_image
             or modal.Image.debian_slim().uv_pip_install("temporalio==1.27.0")
@@ -344,8 +335,6 @@ class Worker:
         async def _orchestrate() -> Any:
             await dispatcher_fn.spawn.aio()
             client = await self.client()
-            if self._temporal_ui:
-                print(f"[modaltemporal] Temporal UI: {self._temporal_ui}")
             return await main(client)
 
         with modal.enable_output():
