@@ -1,72 +1,48 @@
-# Temporal + Modal
+# Modal Temporal Demo
 
-This repository contains an example of how to integrate Temporal
-and Modal using [Sandboxes](https://modal.com/docs/guide/sandbox#sandboxes).
-We create a Modal App that launches Temporal Workers. These workers serve
-as the compute layer for running Temporal Workloads.
+## Instructions
 
-## Usage
+0. Clone this branch
 
-### Step 1: set local env vars
-
-Rename `.env.example` to `.env`. Then populate `.env.example` with required
-environment variableS:
-
-```env
-TEMPORAL_SERVER_URL=
-TEMPORAL_API_KEY=
-TEMPORAL_NAMESPACE=
-```
-Then make them available in your environment with:
-
-```shell
-export $(cat .env)
+```bash
+git clone -b --single-branch thomasjpfan/native-worker https://github.com/modal-projects/modal-temporal
+cd
 ```
 
-### Step 2: create Modal Secret
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-Now create a Modal Secret called `temporal-secrets` with those three
-environment variable. 
+2. Deploy temporal server in a Modal Sandbox. (Only used for testing)
 
-### Step 3: sync files
-
-Create Volume and sync workflow, activity, and config files with:
-
-```shell
-python sync_files.py
+```bash
+uv run inv develop
 ```
 
-This will store files from the following directories into a Modal Volume:
+which should output:
 
-- `/workflows`: defines Temporal Workflows
-- `/activities`: defines Temporal Activities (aka functions)
-- `/configs`: groups Workflows and Activities in a config
+```
+🚀 Temporal started on Modal!
+🌎 Temporal UI: ...
+💻 Configure your local environment by running:
 
-Configs are designed to configure workers to start only with a set
-of workflows.
-
-
-### Step 4: deploy Modal app
-
-The Modal App contains (A) a function to build images using `conda` to manage
-environments and (B) a scheduled Modal Function that builds images automatically 
-(this is designed to observe a database and build images that match a `conda`
-environment).
-
-```shell
-modal deploy deploy.py
+source .modal_temporal/activate
 ```
 
-### Step 5: run example
+3. Run `source .modal_temporal/activate` to configure your local environment to connect to the sandbox in temporal
 
-Run the example script with:
+4. Deploy Temporal worker in Modal and launch the queuer:
 
-```shell
-python run_example.py
+```bash
+uv run modal_worker.py
 ```
 
-This will
+5. Launch 500 workflows:
 
-1. Build an image, using `conda` to install dependencies
-2. Start a Temporal Worker with the image ID above
-3. Trigger a Temporal Workflow, which runs in the Worker above
+```bash
+uv run launch_many_workflows.py
+```
+
+4. Clean up
+
+```python
+uv run inv stop
+```

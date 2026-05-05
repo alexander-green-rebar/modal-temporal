@@ -1,8 +1,0 @@
-
-workflows:
-  - module: "workflows.example"
-    class: "ExampleWorkflow"
-
-activities:
-  - module: "activities.example"
-    function: "example_activity"

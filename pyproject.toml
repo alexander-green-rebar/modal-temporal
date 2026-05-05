@@ -1,0 +1,15 @@
+[project]
+name = "temporal-external-worker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "modal>=1.4.2",
+    "temporalio>=1.27.0",
+]
+
+[dependency-groups]
+dev = [
+    "invoke>=3.0.3",
+]
