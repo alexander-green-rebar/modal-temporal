@@ -37,10 +37,10 @@ You can go to the link above to see the Temporal UI.
 uv run modal_worker.py
 ```
 
-5. Launch 500 workflows:
+5. Launch 100 workflows:
 
 ```bash
-uv run launch_many_workflows.py
+uv run launch_workflows.py --count 100
 ```
 
 Go to the Temporal dashboard + Modal UI to see workflows completed and Modal scale up containers.

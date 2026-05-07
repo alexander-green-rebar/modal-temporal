@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import uuid
 from temporalio.client import Client
@@ -7,19 +8,24 @@ TEMPORAL_SERVER = os.environ["TEMPORAL_SERVER"]
 TEMPORAL_NAMESPACE = os.environ["TEMPORAL_NAMESPACE"]
 
 
-async def main():
+async def main(count: int):
     client = await Client.connect(TEMPORAL_SERVER, namespace=TEMPORAL_NAMESPACE)
     workflows = [
         client.start_workflow(
             "SayHelloWorkflow",
-            uuid.uuid4().hex[:8],
+            "This is a name",
             id=f"say-hello-workflow-{uuid.uuid4()}",
             task_queue="my-task-queue",
         )
-        for _ in range(500)
+        for _ in range(count)
     ]
     await asyncio.gather(*workflows)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--count", type=int, default=100, help="Number of workflows to launch"
+    )
+    args = parser.parse_args()
+    asyncio.run(main(args.count))
