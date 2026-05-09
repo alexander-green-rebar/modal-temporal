@@ -10,6 +10,7 @@ from temporalio.worker import (
     ExecuteActivityInput,
 )
 from temporalio.client import Client
+from async_lru import alru_cache
 
 HEARTBEAT_INTERVAL_SECONDS = 2.0
 
@@ -66,13 +67,15 @@ async def run_activity_with_temporal(
         hb_task.cancel()
 
 
+@alru_cache()
+async def get_modal_function(app_name: str, func_name: str) -> modal.Function:
+    return await modal.Function.from_name(app_name, func_name).hydrate.aio()
+
+
 class DispatchActivityInterceptor(ActivityInboundInterceptor):
-    def __init__(
-        self, next: ActivityInboundInterceptor, app_name: str, modal_func_cache: dict
-    ) -> None:
+    def __init__(self, next: ActivityInboundInterceptor, app_name: str) -> None:
         super().__init__(next)
         self._app_name = app_name
-        self._modal_func_cache = modal_func_cache
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
         info = activity.info()
@@ -82,13 +85,7 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
 
         # Assumes that all functions are named `{activity_name}_runner`
         key = f"{activity_name}_runner"
-        try:
-            modal_func = self._modal_func_cache[key]
-        except KeyError:
-            modal_func = await modal.Function.from_name(
-                self._app_name, key
-            ).hydrate.aio()
-            self._modal_func_cache[key] = modal_func
+        modal_func = await get_modal_function(self._app_name, key)
 
         print(f"[dispatcher] activity={activity_name} args={args} -> external worker")
         await modal_func.spawn.aio(args, task_token)
@@ -98,9 +95,8 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
 class DispatchInterceptor(Interceptor):
     def __init__(self, app_name: str) -> None:
         self._app_name = app_name
-        self._modal_func_cache = {}
 
     def intercept_activity(
         self, next: ActivityInboundInterceptor
     ) -> ActivityInboundInterceptor:
-        return DispatchActivityInterceptor(next, self._app_name, self._modal_func_cache)
+        return DispatchActivityInterceptor(next, self._app_name)
