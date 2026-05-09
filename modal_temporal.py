@@ -1,7 +1,9 @@
+import os
 import asyncio
 import inspect
 import modal
-from typing import Coroutine, Any, Callable
+from functools import wraps
+from typing import Coroutine, Any, Callable, ParamSpec, TypeVar
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import (
@@ -11,6 +13,9 @@ from temporalio.worker import (
 )
 from temporalio.client import Client
 from async_lru import alru_cache
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 HEARTBEAT_INTERVAL_SECONDS = 2.0
 
@@ -33,14 +38,12 @@ async def heartbeat_loop(
             return
 
 
-async def run_activity(
-    fn: Callable, args: Any, client: Client, task_token: bytes
-) -> None:
+async def run_activity(fn: Callable, args: Any, client: Client, task_token: bytes):
     if inspect.iscoroutinefunction(fn):
         coro = fn(*args)
     else:
         coro = asyncio.to_thread(fn, *args)
-    await run_activity_with_temporal(coro, fn.__name__, client, task_token)
+    return await run_activity_with_temporal(coro, fn.__name__, client, task_token)
 
 
 async def run_activity_with_temporal(
@@ -57,6 +60,7 @@ async def run_activity_with_temporal(
         result = await activity_task
         await handle.complete(result)
         print(f"[external worker] completed {activity_name} -> {result!r}")
+        return result
     except asyncio.CancelledError:
         await handle.report_cancellation()
         return
@@ -65,6 +69,25 @@ async def run_activity_with_temporal(
         print(f"[external worker] failed {activity_name}: {e}")
     finally:
         hb_task.cancel()
+
+
+@alru_cache(maxsize=1)
+async def get_temporal_client() -> Client:
+    return await Client.connect(
+        os.environ["TEMPORAL_SERVER"], namespace=os.environ["TEMPORAL_NAMESPACE"]
+    )
+
+
+def modal_activity(f: Callable):
+    @wraps(f)
+    async def wrapper(task_token: bytes, /, args: Any):
+        client = await get_temporal_client()
+        return await run_activity(f, args, client, task_token)
+
+    func_name = f"{f.__name__}_runner"
+    wrapper.__name__ = func_name
+    wrapper.__qualname__ = func_name
+    return wrapper
 
 
 @alru_cache()
@@ -88,7 +111,7 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
         modal_func = await get_modal_function(self._app_name, key)
 
         print(f"[dispatcher] activity={activity_name} args={args} -> external worker")
-        await modal_func.spawn.aio(args, task_token)
+        await modal_func.spawn.aio(task_token, args)
         activity.raise_complete_async()
 
 

@@ -13,6 +13,8 @@ from temporalio.worker import Worker
 from modal_temporal import (
     run_activity,
     DispatchInterceptor,
+    get_temporal_client,
+    modal_activity,
 )
 
 APP_NAME = "temporal-testing"
@@ -31,25 +33,18 @@ env: dict[str, str] = {
 }
 
 
-@alru_cache(maxsize=1)
-async def get_temporal_client() -> Client:
-    return await Client.connect(
-        env["TEMPORAL_SERVER"], namespace=env["TEMPORAL_NAMESPACE"]
-    )
-
-
 @activity.defn
 async def greet(name: str) -> str:
     return f"Hello {name}"
 
 
 @app.function(env=env, image=image, cpu=0.5)
-async def greet_runner(args: Any, task_token: bytes) -> None:
+async def greet_runner(task_token: bytes, args: Any) -> None:
     """Runs the `greet` activity.
 
     Note that, the dispatcher assumes that the modal function is named `{activity_name}_runner`."""
     client = await get_temporal_client()
-    await run_activity(greet, args, client, task_token)
+    return await run_activity(greet, args, client, task_token)
 
 
 @activity.defn
@@ -58,11 +53,20 @@ def word_count(text: str) -> int:
 
 
 @app.function(env=env, image=image, cpu=1)
-async def word_count_runner(args: Any, task_token: bytes) -> None:
+async def word_count_runner(task_token: bytes, args: Any) -> None:
     """Runs the `word_count` activity.
     Note that the dispatcher assumes that the modal function is named `{activity_name}_runner`."""
     client = await get_temporal_client()
-    await run_activity(word_count, args, client, task_token)
+    return await run_activity(word_count, args, client, task_token)
+
+
+@activity.defn
+async def add_two(value: int) -> int:
+    return value + 2
+
+
+# Does the same as above, but with more syntactic sugar
+add_two_runner = app.function(env=env, image=image)(modal_activity(add_two))
 
 
 @workflow.defn
@@ -72,8 +76,11 @@ class SayHelloWorkflow:
         result = await workflow.execute_activity(
             greet, name, schedule_to_close_timeout=timedelta(seconds=30)
         )
-        return await workflow.execute_activity(
+        count = await workflow.execute_activity(
             word_count, result, schedule_to_close_timeout=timedelta(seconds=30)
+        )
+        return await workflow.execute_activity(
+            add_two, count, schedule_to_close_timeout=timedelta(seconds=30)
         )
 
 
@@ -90,7 +97,7 @@ async def queuer():
         client,
         task_queue="my-task-queue",
         workflows=[SayHelloWorkflow],
-        activities=[greet, word_count],
+        activities=[greet, word_count, add_two],
         interceptors=[DispatchInterceptor(APP_NAME)],
         # Add a thread pool executor so we can run sync activities
         activity_executor=ThreadPoolExecutor(max_workers=1),
