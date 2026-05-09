@@ -52,7 +52,8 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
-# Does the same as above, but with more syntactic sugar
+# Does the same as above, but with more syntactic sugar.
+# The function **must** be named `{activity_name}_runner`
 word_count_runner = app.function(env=env, image=image, cpu=1)(
     modal_activity(word_count)
 )
@@ -63,7 +64,6 @@ async def add_two(value: int) -> int:
     return value + 2
 
 
-# Does the same as above, but with more syntactic sugar
 add_two_runner = app.function(env=env, image=image)(modal_activity(add_two))
 
 

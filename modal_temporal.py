@@ -78,13 +78,17 @@ async def get_temporal_client() -> Client:
     )
 
 
+def get_name(activity_name: str) -> str:
+    return f"{activity_name}_runner"
+
+
 def modal_activity(f: Callable):
     @wraps(f)
     async def wrapper(task_token: bytes, /, args: Any):
         client = await get_temporal_client()
         return await run_activity(f, args, client, task_token)
 
-    func_name = f"{f.__name__}_runner"
+    func_name = get_name(f.__name__)
     wrapper.__name__ = func_name
     wrapper.__qualname__ = func_name
     return wrapper
@@ -106,8 +110,7 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
         activity_name = input.fn.__name__
         args = list(input.args)
 
-        # Assumes that all functions are named `{activity_name}_runner`
-        key = f"{activity_name}_runner"
+        key = get_name(activity_name)
         modal_func = await get_modal_function(self._app_name, key)
 
         print(f"[dispatcher] activity={activity_name} args={args} -> external worker")
