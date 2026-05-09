@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import modal
 from typing import Coroutine, Any, Callable
 from temporalio import activity
@@ -34,7 +35,11 @@ async def heartbeat_loop(
 async def run_activity(
     fn: Callable, args: Any, client: Client, task_token: bytes
 ) -> None:
-    await run_activity_with_temporal(fn(*args), fn.__name__, client, task_token)
+    if inspect.iscoroutinefunction(fn):
+        coro = fn(*args)
+    else:
+        coro = asyncio.to_thread(fn, *args)
+    await run_activity_with_temporal(coro, fn.__name__, client, task_token)
 
 
 async def run_activity_with_temporal(

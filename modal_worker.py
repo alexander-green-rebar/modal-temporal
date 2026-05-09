@@ -11,6 +11,7 @@ from modal_temporal import (
 )
 
 from workflows import SayHelloWorkflow
+from concurrent.futures import ThreadPoolExecutor
 from activities import greet, word_count
 
 APP_NAME = "temporal-testing"
@@ -67,6 +68,8 @@ async def queuer():
         workflows=[SayHelloWorkflow],
         activities=[greet, word_count],
         interceptors=[DispatchInterceptor(APP_NAME)],
+        # Add a thread pool executor so we can run sync activities
+        activity_executor=ThreadPoolExecutor(max_workers=1),
     )
     print("Dispatcher worker started. Activities will be completed by a Modal function")
     await worker.run()

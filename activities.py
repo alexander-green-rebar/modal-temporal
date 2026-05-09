@@ -8,5 +8,5 @@ async def greet(name: str) -> str:
 
 
 @activity.defn
-async def word_count(text: str) -> int:
+def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
