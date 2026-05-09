@@ -52,12 +52,10 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
-@app.function(env=env, image=image, cpu=1)
-async def word_count_runner(task_token: bytes, args: Any) -> None:
-    """Runs the `word_count` activity.
-    Note that the dispatcher assumes that the modal function is named `{activity_name}_runner`."""
-    client = await get_temporal_client()
-    return await run_activity(word_count, args, client, task_token)
+# Does the same as above, but with more syntactic sugar
+word_count_runner = app.function(env=env, image=image, cpu=1)(
+    modal_activity(word_count)
+)
 
 
 @activity.defn
