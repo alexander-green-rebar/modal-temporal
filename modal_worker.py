@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import modal
 from temporalio import activity, workflow
+from async_lru import alru_cache
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -19,7 +20,7 @@ app = modal.App(APP_NAME)
 
 image = (
     modal.Image.debian_slim()
-    .uv_pip_install("temporalio==1.27.0")
+    .uv_pip_install("temporalio==1.27.0", "async-lru==2.3.0")
     .add_local_python_source("modal_temporal")
 )
 
@@ -30,6 +31,7 @@ env: dict[str, str] = {
 }
 
 
+@alru_cache(maxsize=1)
 async def get_temporal_client() -> Client:
     return await Client.connect(
         env["TEMPORAL_SERVER"], namespace=env["TEMPORAL_NAMESPACE"]
