@@ -13,11 +13,11 @@ class SayHelloWorkflow:
         result = await workflow.execute_activity(
             greet,
             name,
-            schedule_to_close_timeout=timedelta(seconds=10),
+            schedule_to_close_timeout=timedelta(seconds=30),
         )
         count = await workflow.execute_activity(
             word_count,
             result,
-            schedule_to_close_timeout=timedelta(seconds=10),
+            schedule_to_close_timeout=timedelta(seconds=30),
         )
         return count
