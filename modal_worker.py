@@ -1,20 +1,15 @@
 import re
 import os
 from datetime import timedelta
-from typing import Any
-from concurrent.futures import ThreadPoolExecutor
 
 import modal
-from temporalio import activity, workflow
-from async_lru import alru_cache
-from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio import workflow
 
 from modal_temporal import (
-    run_activity,
-    DispatchInterceptor,
-    get_temporal_client,
     modal_activity,
+    modal_activity_cls,
+    modal_activity_method,
+    run_dispatcher,
 )
 
 APP_NAME = "temporal-testing"
@@ -27,44 +22,35 @@ image = (
 )
 
 
-env: dict[str, str] = {
+env: dict[str, str | None] = {
     "TEMPORAL_SERVER": os.environ["TEMPORAL_SERVER"],
     "TEMPORAL_NAMESPACE": os.environ["TEMPORAL_NAMESPACE"],
 }
 
 
-@activity.defn
+@modal_activity(app, env=env, image=image, cpu=0.5)
 async def greet(name: str) -> str:
     return f"Hello {name}"
 
 
-@app.function(env=env, image=image, cpu=0.5)
-async def greet_runner(task_token: bytes, args: Any) -> None:
-    """Runs the `greet` activity.
-
-    Note that, the dispatcher assumes that the modal function is named `{activity_name}_runner`."""
-    client = await get_temporal_client()
-    return await run_activity(greet, args, client, task_token)
-
-
-@activity.defn
+@modal_activity(app, env=env, image=image, cpu=1)
 def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
-# Does the same as above, but with more syntactic sugar.
-# The function **must** be named `{activity_name}_runner`
-word_count_runner = app.function(env=env, image=image, cpu=1)(
-    modal_activity(word_count)
-)
-
-
-@activity.defn
+@modal_activity(app, env=env, image=image)
 async def add_two(value: int) -> int:
     return value + 2
 
 
-add_two_runner = app.function(env=env, image=image)(modal_activity(add_two))
+# Class based activity
+@modal_activity_cls(app, env=env, image=image)
+class SayHello:
+    greeting: str = modal.parameter()
+
+    @modal_activity_method
+    async def run(self, name: str) -> str:
+        return f"{self.greeting}, {name}!"
 
 
 @workflow.defn
@@ -74,8 +60,11 @@ class SayHelloWorkflow:
         result = await workflow.execute_activity(
             greet, name, schedule_to_close_timeout=timedelta(seconds=30)
         )
+        more_result = await workflow.execute_activity_method(
+            SayHello.run, result, schedule_to_close_timeout=timedelta(seconds=30)
+        )
         count = await workflow.execute_activity(
-            word_count, result, schedule_to_close_timeout=timedelta(seconds=30)
+            word_count, more_result, schedule_to_close_timeout=timedelta(seconds=30)
         )
         return await workflow.execute_activity(
             add_two, count, schedule_to_close_timeout=timedelta(seconds=30)
@@ -86,22 +75,16 @@ class SayHelloWorkflow:
 async def queuer():
     """Pulls task from Temporal's task queue and immediately places it on Modal input queue.
 
-    This function does not actually run the Temporal activity and should not take many resourc.es
+    This function does not actually run the Temporal activity and should not take many resources.
 
     An alternative is to run this queuer on a machine external to Modal.
     """
-    client = await get_temporal_client()
-    worker = Worker(
-        client,
+    await run_dispatcher(
+        APP_NAME,
         task_queue="my-task-queue",
         workflows=[SayHelloWorkflow],
-        activities=[greet, word_count, add_two],
-        interceptors=[DispatchInterceptor(APP_NAME)],
-        # Add a thread pool executor so we can run sync activities
-        activity_executor=ThreadPoolExecutor(max_workers=1),
+        activities=[greet, word_count, add_two, SayHello(greeting="You are great").run],
     )
-    print("Dispatcher worker started. Activities will be completed by a Modal function")
-    await worker.run()
 
 
 if __name__ == "__main__":
