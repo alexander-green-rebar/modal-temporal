@@ -25,7 +25,7 @@ from temporalio.worker import (
     ActivityInboundInterceptor,
     ExecuteActivityInput,
 )
-from temporalio.client import Client
+from temporalio.client import Client, AsyncActivityHandle
 from async_lru import alru_cache
 
 P = ParamSpec("P")
@@ -36,7 +36,7 @@ HEARTBEAT_INTERVAL_SECONDS = 2.0
 
 
 async def heartbeat_loop(
-    handle, activity_name: str, activity_task: asyncio.Task
+    handle: AsyncActivityHandle, activity_name: str, activity_task: asyncio.Task
 ) -> None:
     """Temporal keeps a heartbeat to make sure the activity is running."""
     while True:

@@ -71,7 +71,7 @@ class SayHelloWorkflow:
         )
 
 
-@app.function(schedule=modal.Period(minutes=30), timeout=30 * 60, image=image, env=env)
+@app.function(min_containers=1, image=image, env=env)
 async def queuer():
     """Pulls task from Temporal's task queue and immediately places it on Modal input queue.
 
