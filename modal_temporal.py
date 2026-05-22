@@ -306,7 +306,7 @@ async def run_dispatcher(
     workflows: Sequence[type],
     activities: Sequence[Callable],
     max_workers: int = 4,
-    worker_kwargs: dict,
+    worker_kwargs: dict | None = None,
 ) -> None:
     """Run the Temporal worker that dispatches activities to Modal.
 
@@ -317,6 +317,8 @@ async def run_dispatcher(
     - `interceptors` you pass are appended after the DispatchInterceptor.
     - `activity_executor`, if given, replaces the default thread pool.
     """
+    if worker_kwargs is None:
+        worker_kwargs = {}
     client = await get_temporal_client()
     interceptors = [
         DispatchInterceptor(app_name),

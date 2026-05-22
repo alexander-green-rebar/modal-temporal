@@ -2,14 +2,18 @@ import re
 import os
 from datetime import timedelta
 
+import argparse
+import asyncio
 import modal
 from temporalio import workflow
+import uuid
 
 from modal_temporal import (
     modal_activity,
     modal_activity_cls,
     modal_activity_method,
     run_dispatcher,
+    get_temporal_client,
 )
 
 APP_NAME = "temporal-testing"
@@ -71,25 +75,41 @@ class SayHelloWorkflow:
         )
 
 
-@app.function(min_containers=1, image=image, env=env)
-async def queuer():
-    """Pulls task from Temporal's task queue and immediately places it on Modal input queue.
+@app.cls(min_containers=1, image=image, env=env)
+class Enqueuer():
+    @modal.enter()
+    async def start(self):
+        """Pulls task from Temporal's task queue and immediately places it on Modal input queue.
 
-    This function does not actually run the Temporal activity and should not take many resources.
+        This function does not actually run the Temporal activity and should not take many resources.
 
-    An alternative is to run this queuer on a machine external to Modal.
-    """
-    await run_dispatcher(
-        APP_NAME,
-        task_queue="my-task-queue",
-        workflows=[SayHelloWorkflow],
-        activities=[greet, word_count, add_two, SayHello(greeting="You are great").run],
-    )
+        An alternative is to run this queuer on a machine external to Modal.
+        """
+        await run_dispatcher(
+            APP_NAME,
+            task_queue="my-task-queue",
+            workflows=[SayHelloWorkflow],
+            activities=[greet, word_count, add_two, SayHello(greeting="You are great").run],
+        )
+
+async def launch_workflows(count: int):
+    client = await get_temporal_client()
+    workflows = [
+        client.start_workflow(
+            "SayHelloWorkflow",
+            "This is a name",
+            id=f"say-hello-workflow-{uuid.uuid4()}",
+            task_queue="my-task-queue",
+        )
+        for _ in range(count)
+    ]
+    await asyncio.gather(*workflows)
 
 
 if __name__ == "__main__":
-    # Deploy and trigger the initial queuer
-    with modal.enable_output():
-        app.deploy()
-        func = modal.Function.from_name("temporal-testing", "queuer")
-        func.spawn()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--count", type=int, default=1, help="Number of workflows to launch"
+    )
+    args = parser.parse_args()
+    asyncio.run(launch_workflows(args.count))

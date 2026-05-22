@@ -315,6 +315,31 @@ wheels = [
 ]
 
 [[package]]
+name = "modal-temporal"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "async-lru" },
+    { name = "modal" },
+    { name = "temporalio" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "invoke" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "async-lru", specifier = ">=2.3.0" },
+    { name = "modal", specifier = ">=1.4.2" },
+    { name = "temporalio", specifier = ">=1.27.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "invoke", specifier = ">=3.0.3" }]
+
+[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -467,31 +492,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/f9/5e/50ea27817003665c7
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/44/4f6ba4e2c171847e6f9a460213b196bbf26edea43d0e66889c7ccc55d368/synchronicity-0.12.2-py3-none-any.whl", hash = "sha256:9dbaca81fb7f2b57c6dea326e514e1c80e9ccfd9c9618515e84fa6091026273b", size = 41312, upload-time = "2026-04-06T15:06:14.459Z" },
 ]
-
-[[package]]
-name = "temporal-external-worker"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "async-lru" },
-    { name = "modal" },
-    { name = "temporalio" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "invoke" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "async-lru", specifier = ">=2.3.0" },
-    { name = "modal", specifier = ">=1.4.2" },
-    { name = "temporalio", specifier = ">=1.27.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "invoke", specifier = ">=3.0.3" }]
 
 [[package]]
 name = "temporalio"
