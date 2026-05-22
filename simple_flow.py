@@ -32,46 +32,54 @@ env: dict[str, str | None] = {
 }
 
 
-@modal_activity(app, env=env, image=image, cpu=0.5)
-async def greet(name: str) -> str:
-    return f"Hello {name}"
+@modal_activity(app, env=env, image=image)
+async def get_work(amount: int) -> list[str]:
+    import random
+    words = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog", "hello", "world"]
+    return [" ".join(random.choices(words, k=random.randint(3, 10))) for _ in range(amount)]
 
 
-@modal_activity(app, env=env, image=image, cpu=1)
+@modal_activity(app, env=env, image=image)
 def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
-@modal_activity(app, env=env, image=image)
-async def add_two(value: int) -> int:
-    return value + 2
-
-
 # Class based activity
 @modal_activity_cls(app, env=env, image=image)
-class SayHello:
-    greeting: str = modal.parameter()
+class AddValue:
+    value: int = modal.parameter()
 
     @modal_activity_method
-    async def run(self, name: str) -> str:
-        return f"{self.greeting}, {name}!"
+    async def run(self, input_value: int) -> int:
+        return self.value + input_value
+
+
+@modal_activity(app, env=env, image=image)
+def reduce_values(value: list[int]) -> int:
+    return sum(value)
 
 
 @workflow.defn
 class SayHelloWorkflow:
     @workflow.run
-    async def run(self, name: str) -> int:
-        result = await workflow.execute_activity(
-            greet, name, schedule_to_close_timeout=timedelta(seconds=30)
+    async def run(self, amount: int) -> int:
+        work_items = await workflow.execute_activity(
+            get_work, amount, schedule_to_close_timeout=timedelta(seconds=30)
         )
-        more_result = await workflow.execute_activity_method(
-            SayHello.run, result, schedule_to_close_timeout=timedelta(seconds=30)
-        )
-        count = await workflow.execute_activity(
-            word_count, more_result, schedule_to_close_timeout=timedelta(seconds=30)
-        )
+
+        async def process_single_item(item: str) -> int:
+            count = await workflow.execute_activity(
+                word_count, item, schedule_to_close_timeout=timedelta(seconds=30)
+            )
+            return await workflow.execute_activity_method(
+                AddValue.run, count, schedule_to_close_timeout=timedelta(seconds=30)
+            )
+        count_tasks = [
+            process_single_item(item) for item in work_items
+        ]
+        counts = await asyncio.gather(*count_tasks)
         return await workflow.execute_activity(
-            add_two, count, schedule_to_close_timeout=timedelta(seconds=30)
+            reduce_values, counts, schedule_to_close_timeout=timedelta(seconds=30)
         )
 
 
@@ -89,15 +97,15 @@ class Enqueuer():
             APP_NAME,
             task_queue="my-task-queue",
             workflows=[SayHelloWorkflow],
-            activities=[greet, word_count, add_two, SayHello(greeting="You are great").run],
+            activities=[get_work, word_count, reduce_values, AddValue(value=4).run],
         )
 
-async def launch_workflows(count: int):
+async def launch_workflows(count: int, amount: int):
     client = await get_temporal_client()
     workflows = [
         client.start_workflow(
             "SayHelloWorkflow",
-            "This is a name",
+            amount,
             id=f"say-hello-workflow-{uuid.uuid4()}",
             task_queue="my-task-queue",
         )
@@ -111,5 +119,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--count", type=int, default=1, help="Number of workflows to launch"
     )
+    parser.add_argument(
+        "--amount", type=int, default=10, help="Number of workflows to launch"
+    )
     args = parser.parse_args()
-    asyncio.run(launch_workflows(args.count))
+    asyncio.run(launch_workflows(args.count, args.amount))

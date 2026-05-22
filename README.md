@@ -34,13 +34,13 @@ You can go to the link above to see the Temporal UI.
 4. Deploy Temporal worker in Modal and launch the queuer:
 
 ```bash
-uv run modal_worker.py
+uv run modal deploy simple_flow.py
 ```
 
-5. Launch 100 workflows:
+5. Launch workflow:
 
 ```bash
-uv run launch_workflows.py --count 100
+uv run simple_flow.py
 ```
 
 Go to the Temporal dashboard + Modal UI to see workflows completed and Modal scale up containers.
