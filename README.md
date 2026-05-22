@@ -65,6 +65,6 @@ The `Enqueuer` polls tasks from Temporal's task queue and puts them on Modal inp
 
 ![](images/modal-temporal.png)
 
-### SDK
+### Implementation details
 
 The `modal_activity` decorator defined in [modal_temporal.py](modal_temporal.py) registers Modal functions suffixed by `_runner`. These Modal functions accept the function arguments and Temporal handle to report results back to Temporal.
