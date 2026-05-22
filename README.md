@@ -1,4 +1,12 @@
-# Modal Temporal Demo
+# Modal+Temporal Demo
+
+Run your Modal functions as Temporal activities with just a decorator:
+
+```python
+@modal_activity(app, ...)
+async def embed(value: str) -> list[float]:
+    ...
+```
 
 ## Instructions
 
