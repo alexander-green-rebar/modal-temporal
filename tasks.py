@@ -35,7 +35,7 @@ def create_or_get_temporal_sandbox() -> TemporalEndpoints:
             image=image,
             name=sandbox_name,
             app=app,
-            timeout=60 * 60,
+            timeout=120 * 60,
         )
     except modal.exception.AlreadyExistsError:
         sb = modal.Sandbox.from_name(app_name=app_name, name=sandbox_name)
