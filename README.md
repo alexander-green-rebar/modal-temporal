@@ -8,7 +8,7 @@ async def embed(value: str) -> list[float]:
     ...
 ```
 
-## Instructions
+## Demo Instructions
 
 0. Clone this branch
 
@@ -64,3 +64,7 @@ uv run inv stop
 The `Enqueuer` polls tasks from Temporal's task queue and puts them on Modal input queues. The Modal Function auto-scales and runs the Temporal activity. When it finishes, the results are reported back to Temporal directly.
 
 ![](images/modal-temporal.png)
+
+### SDK
+
+The `modal_activity` decorator defined in [modal_temporal.py](modal_temporal.py) registers Modal functions suffixed by `_runner`. These Modal functions accept the function arguments and Temporal handle to report results back to Temporal.
