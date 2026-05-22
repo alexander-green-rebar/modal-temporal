@@ -40,14 +40,14 @@ async def get_work(amount: int) -> list[str]:
 
 
 @modal_activity(app, env=env, image=image)
-@modal.concurrent(max_inputs=5)
+@modal.concurrent(max_inputs=2)
 def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
 # Class based activity
 @modal_activity_cls(app, env=env, image=image)
-@modal.concurrent(max_inputs=5)
+@modal.concurrent(max_inputs=2)
 class AddValue:
     value: int = modal.parameter()
 
