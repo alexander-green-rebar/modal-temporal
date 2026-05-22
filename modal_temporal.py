@@ -17,6 +17,7 @@ from typing import (
     Sequence,
     dataclass_transform,
 )
+from modal.partial_function import PartialFunction as _ModalPartialFunction
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import (
@@ -112,23 +113,36 @@ def modal_activity(
     function that runs it. Returns the Temporal activity to pass to the Worker."""
 
     def decorate(f: Callable[P, R]) -> Callable[P, R]:
-        temporal_activity: Callable[P, R] = activity.defn(f)
+        # Unwrap Modal PartialFunction (e.g. from @modal.concurrent) to get
+        # the plain callable that temporalio's activity.defn requires.
+        is_partial = isinstance(f, _ModalPartialFunction)
+        raw_f = f._get_raw_f() if is_partial else f
 
-        @wraps(f)
+        temporal_activity: Callable[P, R] = activity.defn(raw_f)
+
+        @wraps(raw_f)
         async def runner(task_token: bytes, /, args: Any):
             client = await get_temporal_client()
-            return await run_activity(f, args, client, task_token)
+            return await run_activity(raw_f, args, client, task_token)
 
-        modal_name = f"{f.__name__}_runner"
+        modal_name = f"{raw_f.__name__}_runner"
         runner.__name__ = runner.__qualname__ = modal_name
         # Modal references a non-serialized function by f"{module}:{qualname}"
         # and re-imports that module in the container. @wraps put the activity's
         # module on `runner`; bind it there as a real global so the lookup
         # resolves. The decorator re-runs on the remote import and re-binds it.
-        setattr(sys.modules[f.__module__], modal_name, runner)
-        app.function(**modal_opts)(runner)
+        setattr(sys.modules[raw_f.__module__], modal_name, runner)
 
-        REGISTRY[f.__name__] = _Runner(modal_name, is_class=False)
+        if is_partial:
+            # Redirect the PartialFunction's raw_f to our runner so that Modal
+            # settings like @modal.concurrent carry through to the runner.
+            inner = getattr(f, f._sync_synchronizer._original_attr)
+            inner.raw_f = runner
+            app.function(**modal_opts)(f)
+        else:
+            app.function(**modal_opts)(runner)
+
+        REGISTRY[raw_f.__name__] = _Runner(modal_name, is_class=False)
         return temporal_activity
 
     return decorate
