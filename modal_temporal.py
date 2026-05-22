@@ -115,8 +115,14 @@ def modal_activity(
     def decorate(f: Callable[P, R]) -> Callable[P, R]:
         # Unwrap Modal PartialFunction (e.g. from @modal.concurrent) to get
         # the plain callable that temporalio's activity.defn requires.
-        is_partial = isinstance(f, _ModalPartialFunction)
-        raw_f = f._get_raw_f() if is_partial else f
+        partial = None
+        inner = None
+        if isinstance(f, _ModalPartialFunction):
+            inner = getattr(f, f._sync_synchronizer._original_attr)
+            partial = f
+            raw_f = inner.raw_f
+        else:
+            raw_f = f
 
         temporal_activity: Callable[P, R] = activity.defn(raw_f)
 
@@ -133,12 +139,11 @@ def modal_activity(
         # resolves. The decorator re-runs on the remote import and re-binds it.
         setattr(sys.modules[raw_f.__module__], modal_name, runner)
 
-        if is_partial:
+        if partial is not None:
             # Redirect the PartialFunction's raw_f to our runner so that Modal
             # settings like @modal.concurrent carry through to the runner.
-            inner = getattr(f, f._sync_synchronizer._original_attr)
             inner.raw_f = runner
-            app.function(**modal_opts)(f)
+            app.function(**modal_opts)(partial)
         else:
             app.function(**modal_opts)(runner)
 
@@ -184,6 +189,16 @@ def modal_activity_cls(
     __name__ (same convention as @modal_activity)."""
 
     def decorate(cls: type[T]) -> type[T]:
+        # Unwrap Modal PartialFunction (e.g. from @modal.concurrent) to get
+        # the plain class that the rest of this decorator requires.
+        # When wrapping a class, PartialFunction stores it in user_cls (not raw_f).
+        partial = None
+        inner = None
+        if isinstance(cls, _ModalPartialFunction):
+            inner = getattr(cls, cls._sync_synchronizer._original_attr)
+            partial = cls
+            cls = inner.user_cls
+
         # Modal-style params: synthesize a dataclass __init__ so the queuer can
         # build an instance and the interceptor can read vars(instance). The
         # signature logic below is then identical for both styles.
@@ -257,7 +272,14 @@ def modal_activity_cls(
         runner_cls.__module__ = cls.__module__
         runner_cls.__qualname__ = runner_name
         setattr(sys.modules[cls.__module__], runner_name, runner_cls)
-        app.cls(**modal_opts)(runner_cls)
+
+        if partial is not None:
+            # Redirect the PartialFunction to wrap runner_cls so Modal settings
+            # like @modal.concurrent carry through to the runner class.
+            inner.user_cls = runner_cls
+            app.cls(**modal_opts)(partial)
+        else:
+            app.cls(**modal_opts)(runner_cls)
 
         for n in methods:
             REGISTRY[n] = _Runner(runner_name, is_class=True)

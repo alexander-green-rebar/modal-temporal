@@ -40,13 +40,14 @@ async def get_work(amount: int) -> list[str]:
 
 
 @modal_activity(app, env=env, image=image)
-@modal.concurrent(max_inputs=10)
+@modal.concurrent(max_inputs=5)
 def word_count(text: str) -> int:
     return len(re.findall(r"\b[a-zA-Z]+\b", text))
 
 
 # Class based activity
 @modal_activity_cls(app, env=env, image=image)
+@modal.concurrent(max_inputs=5)
 class AddValue:
     value: int = modal.parameter()
 
@@ -121,7 +122,7 @@ if __name__ == "__main__":
         "--count", type=int, default=1, help="Number of workflows to launch"
     )
     parser.add_argument(
-        "--amount", type=int, default=20, help="Number of workflows to launch"
+        "--work", type=int, default=20, help="Number of workflows to launch"
     )
     args = parser.parse_args()
-    asyncio.run(launch_workflows(args.count, args.amount))
+    asyncio.run(launch_workflows(args.count, args.work))
