@@ -1,3 +1,4 @@
+from datetime import timedelta
 import os
 import sys
 import types
@@ -34,16 +35,20 @@ P = ParamSpec("P")
 R = TypeVar("R")
 T = TypeVar("T")
 
-HEARTBEAT_INTERVAL_SECONDS = 2.0
 
-
-async def heartbeat_loop(
-    handle: AsyncActivityHandle, activity_name: str, activity_task: asyncio.Task
+async def _auto_heartbeat_loop(
+    handle: AsyncActivityHandle,
+    activity_name: str,
+    heartbeat_timeout: timedelta | None,
+    activity_task: asyncio.Task,
 ) -> None:
     """Temporal keeps a heartbeat to make sure the activity is running."""
+    if heartbeat_timeout is None:
+        return
+
     while True:
         try:
-            await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+            await asyncio.sleep(heartbeat_timeout.total_seconds())
             await handle.heartbeat()
             print(f"[external worker] heartbeat sent for {activity_name}")
         except asyncio.CancelledError:
@@ -71,7 +76,11 @@ async def run_activity_with_temporal(
 ):
     handle = client.get_async_activity_handle(task_token=info.task_token)
     activity_task = asyncio.create_task(coro)
-    hb_task = asyncio.create_task(heartbeat_loop(handle, activity_name, activity_task))
+    hb_task = asyncio.create_task(
+        _auto_heartbeat_loop(
+            handle, activity_name, info.heartbeat_timeout, activity_task
+        )
+    )
 
     try:
         result = await activity_task
