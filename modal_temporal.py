@@ -39,13 +39,10 @@ T = TypeVar("T")
 async def _auto_heartbeat_loop(
     handle: AsyncActivityHandle,
     activity_name: str,
-    heartbeat_timeout: timedelta | None,
+    heartbeat_timeout: timedelta,
     activity_task: asyncio.Task,
 ) -> None:
     """Temporal keeps a heartbeat to make sure the activity is running."""
-    if heartbeat_timeout is None:
-        return
-
     while True:
         try:
             await asyncio.sleep(heartbeat_timeout.total_seconds())
@@ -76,11 +73,13 @@ async def run_activity_with_temporal(
 ):
     handle = client.get_async_activity_handle(task_token=info.task_token)
     activity_task = asyncio.create_task(coro)
-    hb_task = asyncio.create_task(
-        _auto_heartbeat_loop(
-            handle, activity_name, info.heartbeat_timeout, activity_task
+    heartbeat_task = None
+    if info.heartbeat_timeout:
+        heartbeat_task = asyncio.create_task(
+            _auto_heartbeat_loop(
+                handle, activity_name, info.heartbeat_timeout, activity_task
+            )
         )
-    )
 
     try:
         result = await activity_task
@@ -94,7 +93,8 @@ async def run_activity_with_temporal(
         await handle.fail(ApplicationError(str(e)))
         print(f"[external worker] failed {activity_name}: {e}")
     finally:
-        hb_task.cancel()
+        if heartbeat_task:
+            heartbeat_task.cancel()
 
 
 @alru_cache(maxsize=1)
