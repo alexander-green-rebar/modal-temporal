@@ -19,6 +19,7 @@ from typing import (
 )
 from modal.partial_function import PartialFunction as _ModalPartialFunction
 from temporalio import activity
+from temporalio.activity import Info
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import (
     Worker,
@@ -54,21 +55,21 @@ async def heartbeat_loop(
             return
 
 
-async def run_activity(fn: Callable, args: Any, client: Client, task_token: bytes):
+async def run_activity(fn: Callable, args: Any, client: Client, info: Info):
     if inspect.iscoroutinefunction(fn):
         coro = fn(*args)
     else:
         coro = asyncio.to_thread(fn, *args)
-    return await run_activity_with_temporal(coro, fn.__name__, client, task_token)
+    return await run_activity_with_temporal(coro, fn.__name__, client, info)
 
 
 async def run_activity_with_temporal(
     coro: Coroutine,
     activity_name: str,
     client: Client,
-    task_token: bytes,
+    info: Info,
 ):
-    handle = client.get_async_activity_handle(task_token=task_token)
+    handle = client.get_async_activity_handle(task_token=info.task_token)
     activity_task = asyncio.create_task(coro)
     hb_task = asyncio.create_task(heartbeat_loop(handle, activity_name, activity_task))
 
@@ -127,9 +128,9 @@ def modal_activity(
         temporal_activity: Callable[P, R] = activity.defn(raw_f)
 
         @wraps(raw_f)
-        async def runner(task_token: bytes, /, args: Any):
+        async def runner(info: Info, /, args: Any):
             client = await get_temporal_client()
-            return await run_activity(raw_f, args, client, task_token)
+            return await run_activity(raw_f, args, client, info)
 
         modal_name = f"{raw_f.__name__}_runner"
         runner.__name__ = runner.__qualname__ = modal_name
@@ -139,7 +140,7 @@ def modal_activity(
         # resolves. The decorator re-runs on the remote import and re-binds it.
         setattr(sys.modules[raw_f.__module__], modal_name, runner)
 
-        if partial is not None:
+        if partial is not None and inner is not None:
             # Redirect the PartialFunction's raw_f to our runner so that Modal
             # settings like @modal.concurrent carry through to the runner.
             inner.raw_f = runner
@@ -247,10 +248,10 @@ def modal_activity_cls(
 
         # Dynamically add methods from activities
         def make_method(method_name: str):
-            async def _run(self, task_token: bytes, args: Any):
+            async def _run(self, info: Info, args: Any):
                 client = await get_temporal_client()
                 return await run_activity(
-                    getattr(self._activity, method_name), args, client, task_token
+                    getattr(self._activity, method_name), args, client, info
                 )
 
             return modal.method()(_run)
@@ -273,7 +274,7 @@ def modal_activity_cls(
         runner_cls.__qualname__ = runner_name
         setattr(sys.modules[cls.__module__], runner_name, runner_cls)
 
-        if partial is not None:
+        if inner is not None and partial is not None:
             # Redirect the PartialFunction to wrap runner_cls so Modal settings
             # like @modal.concurrent carry through to the runner class.
             inner.user_cls = runner_cls
@@ -305,7 +306,6 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
         info = activity.info()
-        task_token = info.task_token
         args = list(input.args)
 
         entry = REGISTRY[info.activity_type]
@@ -321,7 +321,7 @@ class DispatchActivityInterceptor(ActivityInboundInterceptor):
             handle = await get_modal_function(self._app_name, entry.modal_name)
 
         print(f"[dispatcher] {info.activity_type} -> {entry.modal_name} args={args}")
-        await handle.spawn.aio(task_token, args)
+        await handle.spawn.aio(info, args)
         activity.raise_complete_async()
 
 
