@@ -117,6 +117,7 @@ class Enqueuer:
         )
 
 
+@app.function(image=image, env=env)
 async def launch_workflows(count: int, amount: int):
     client = await get_temporal_client()
     workflows = [
@@ -140,4 +141,7 @@ if __name__ == "__main__":
         "--work", type=int, default=20, help="Number of workflows to launch"
     )
     args = parser.parse_args()
-    asyncio.run(launch_workflows(args.count, args.work))
+    func = modal.Function.from_name(APP_NAME, "launch_workflows")
+    # Launch workflow
+    req = func.spawn(args.count, args.work)
+    print(f"Launched workflow at: {req.get_dashboard_url()}")
