@@ -27,7 +27,7 @@ image = (
 
 
 env: dict[str, str | None] = {
-    "TEMPORAL_SERVER": os.environ["TEMPORAL_SERVER"],
+    "TEMPORAL_SERVER_URL": os.environ["TEMPORAL_SERVER_URL"],
     "TEMPORAL_NAMESPACE": os.environ["TEMPORAL_NAMESPACE"],
 }
 

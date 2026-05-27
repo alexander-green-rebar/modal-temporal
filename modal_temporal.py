@@ -131,7 +131,9 @@ async def get_temporal_client() -> Client:
     You may need to pass in additional `secrets=` to `@modal_activity` and ingest it here to
     authenticate with Temporal."""
     return await Client.connect(
-        os.environ["TEMPORAL_SERVER"], namespace=os.environ["TEMPORAL_NAMESPACE"]
+        os.environ["TEMPORAL_SERVER_URL"],
+        api_key=os.getenv("TEMPORAL_API_KEY"),
+        namespace=os.getenv("TEMPORAL_NAMESPACE", "default"),
     )
 
 

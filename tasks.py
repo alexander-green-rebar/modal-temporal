@@ -54,13 +54,13 @@ def develop(ctx):
     endpoints = create_or_get_temporal_sandbox()
 
     source_content = dedent(f"""\
-    export TEMPORAL_SERVER='{endpoints.server}'
+    export TEMPORAL_SERVER_URL='{endpoints.server}'
     export TEMPORAL_UI='{endpoints.ui}'
     export TEMPORAL_METRICS='{endpoints.metrics}'
     export TEMPORAL_NAMESPACE='default'
 
     deactivate_modal_temporal () {{
-        unset TEMPORAL_SERVER
+        unset TEMPORAL_SERVER_URL
         unset TEMPORAL_UI
         unset TEMPORAL_METRICS
         unset TEMPORAL_NAMESPACE
