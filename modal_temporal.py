@@ -15,6 +15,7 @@ from typing import (
     Callable,
     ParamSpec,
     TypeVar,
+    Union,
     Sequence,
     dataclass_transform,
 )
@@ -67,6 +68,8 @@ async def run_activity(fn: Callable, args: Any, client: Client, info: Info):
     def heartbeat_fn(*details: Any) -> None:
         asyncio.run_coroutine_threadsafe(handle.heartbeat(*details), loop)
 
+    # This uses temporal private API to construct the _Context. If you do not need the context
+    # i.e. call `activity.heartbeat` then it's okay to not set the context.
     context = _Context(
         info=lambda: info,
         heartbeat=heartbeat_fn,
@@ -151,11 +154,13 @@ REGISTRY: dict[str, _Runner] = {}
 
 def modal_activity(
     app: modal.App, **modal_opts: Any
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+) -> Callable[[Union[Callable[P, R], _ModalPartialFunction[P, R, R]]], Callable[P, R]]:
     """Register a function as a Temporal activity AND build + record the Modal
     function that runs it. Returns the Temporal activity to pass to the Worker."""
 
-    def decorate(f: Callable[P, R]) -> Callable[P, R]:
+    def decorate(
+        f: Union[Callable[P, R], _ModalPartialFunction[P, R, R]],
+    ) -> Callable[P, R]:
         # Unwrap Modal PartialFunction (e.g. from @modal.concurrent) to get
         # the plain callable that temporalio's activity.defn requires.
         partial = None
