@@ -63,7 +63,7 @@ uv run inv stop
 
 ## How does it work?
 
-The `Enqueuer` polls tasks from Temporal's task queue and puts them on Modal input queues. The Modal Function auto-scales and runs the Temporal activity. When it finishes, the results are reported back to Temporal directly.
+The Modal `Enqueuer` function polls tasks from Temporal's task queue and puts them on Modal input queues. The Modal Function auto-scales and runs the Temporal activity. When it finishes, the results are reported back to Temporal directly.
 
 ![](images/modal-temporal.png)
 
