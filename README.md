@@ -8,6 +8,8 @@ async def embed(value: str) -> list[float]:
     ...
 ```
 
+You can modify [modal_temporal.py](modal_temporal.py) to fit your needs.
+
 ## Demo Instructions
 
 0. Clone this branch
@@ -19,7 +21,7 @@ cd modal-temporal
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-2. Deploy temporal server in a Modal Sandbox. (Only used for testing)
+2. Deploy temporal server in a Modal Sandbox, which is only used for testing. To connect to your own cluster, update `get_temporal_client` in [modal_temporal.py](modal_temporal.py) with your credentials.
 
 ```bash
 uv run inv develop

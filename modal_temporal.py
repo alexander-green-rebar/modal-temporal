@@ -126,6 +126,10 @@ async def run_activity_with_temporal(
 
 @alru_cache(maxsize=1)
 async def get_temporal_client() -> Client:
+    """Get temporal client.
+
+    You may need to pass in additional `secrets=` to `@modal_activity` and ingest it here to
+    authenticate with Temporal."""
     return await Client.connect(
         os.environ["TEMPORAL_SERVER"], namespace=os.environ["TEMPORAL_NAMESPACE"]
     )
