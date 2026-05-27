@@ -19,8 +19,11 @@ from typing import (
     dataclass_transform,
 )
 from modal.partial_function import PartialFunction as _ModalPartialFunction
+import threading
+import temporalio.common
+import temporalio.converter
 from temporalio import activity
-from temporalio.activity import Info
+from temporalio.activity import Info, _Context, _ActivityCancellationDetailsHolder
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import (
     Worker,
@@ -58,20 +61,44 @@ async def _auto_heartbeat_loop(
 
 
 async def run_activity(fn: Callable, args: Any, client: Client, info: Info):
-    if inspect.iscoroutinefunction(fn):
-        coro = fn(*args)
-    else:
-        coro = asyncio.to_thread(fn, *args)
-    return await run_activity_with_temporal(coro, fn.__name__, client, info)
+    loop = asyncio.get_running_loop()
+    handle = client.get_async_activity_handle(task_token=info.task_token)
+
+    def heartbeat_fn(*details: Any) -> None:
+        asyncio.run_coroutine_threadsafe(handle.heartbeat(*details), loop)
+
+    context = _Context(
+        info=lambda: info,
+        heartbeat=heartbeat_fn,
+        cancelled_event=temporalio.common._CompositeEvent(
+            thread_event=threading.Event(), async_event=asyncio.Event()
+        ),
+        worker_shutdown_event=temporalio.common._CompositeEvent(
+            thread_event=threading.Event(), async_event=asyncio.Event()
+        ),
+        shield_thread_cancel_exception=None,
+        payload_converter_class_or_instance=temporalio.converter.DefaultPayloadConverter,
+        runtime_metric_meter=None,
+        client=client,
+        cancellation_details=_ActivityCancellationDetailsHolder(),
+    )
+    token = _Context.set(context)
+    try:
+        if inspect.iscoroutinefunction(fn):
+            coro = fn(*args)
+        else:
+            coro = asyncio.to_thread(fn, *args)
+        return await run_activity_with_temporal(coro, fn.__name__, handle, info)
+    finally:
+        _Context.reset(token)
 
 
 async def run_activity_with_temporal(
     coro: Coroutine,
     activity_name: str,
-    client: Client,
+    handle: AsyncActivityHandle,
     info: Info,
 ):
-    handle = client.get_async_activity_handle(task_token=info.task_token)
     activity_task = asyncio.create_task(coro)
     heartbeat_task = None
     if info.heartbeat_timeout:

@@ -5,7 +5,7 @@ from datetime import timedelta
 import argparse
 import asyncio
 import modal
-from temporalio import workflow
+from temporalio import workflow, activity
 import uuid
 
 from modal_temporal import (
@@ -35,8 +35,22 @@ env: dict[str, str | None] = {
 @modal_activity(app, env=env, image=image)
 async def get_work(amount: int) -> list[str]:
     import random
-    words = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog", "hello", "world"]
-    return [" ".join(random.choices(words, k=random.randint(3, 10))) for _ in range(amount)]
+
+    words = [
+        "the",
+        "quick",
+        "brown",
+        "fox",
+        "jumps",
+        "over",
+        "lazy",
+        "dog",
+        "hello",
+        "world",
+    ]
+    return [
+        " ".join(random.choices(words, k=random.randint(3, 10))) for _ in range(amount)
+    ]
 
 
 @modal_activity(app, env=env, image=image)
@@ -58,6 +72,7 @@ class AddValue:
 
 @modal_activity(app, env=env, image=image)
 def reduce_values(value: list[int]) -> int:
+    activity.logger.info("Reducing values")
     return sum(value)
 
 
@@ -76,9 +91,8 @@ class SayHelloWorkflow:
             return await workflow.execute_activity_method(
                 AddValue.run, count, schedule_to_close_timeout=timedelta(seconds=30)
             )
-        count_tasks = [
-            process_single_item(item) for item in work_items
-        ]
+
+        count_tasks = [process_single_item(item) for item in work_items]
         counts = await asyncio.gather(*count_tasks)
         return await workflow.execute_activity(
             reduce_values, counts, schedule_to_close_timeout=timedelta(seconds=30)
@@ -86,7 +100,7 @@ class SayHelloWorkflow:
 
 
 @app.cls(min_containers=1, image=image, env=env)
-class Enqueuer():
+class Enqueuer:
     @modal.enter()
     async def start(self):
         """Pulls task from Temporal's task queue and immediately places it on Modal input queue.
@@ -101,6 +115,7 @@ class Enqueuer():
             workflows=[SayHelloWorkflow],
             activities=[get_work, word_count, reduce_values, AddValue(value=4).run],
         )
+
 
 async def launch_workflows(count: int, amount: int):
     client = await get_temporal_client()
