@@ -18,6 +18,7 @@ from modal_temporal import (
 
 APP_NAME = "temporal-testing"
 app = modal.App(APP_NAME)
+TASK_QUEUE_NAME = "my-task-queue"
 
 image = (
     modal.Image.debian_slim()
@@ -110,7 +111,7 @@ class Enqueuer:
         """
         await run_dispatcher(
             APP_NAME,
-            task_queue="my-task-queue",
+            task_queue=TASK_QUEUE_NAME,
             workflows=[SayHelloWorkflow],
             activities=[get_work, word_count, reduce_values, AddValue(value=4).run],
         )
@@ -124,7 +125,7 @@ async def launch_workflows(count: int, amount: int):
             "SayHelloWorkflow",
             amount,
             id=f"say-hello-workflow-{uuid.uuid4()}",
-            task_queue="my-task-queue",
+            task_queue=TASK_QUEUE_NAME,
         )
         for _ in range(count)
     ]
