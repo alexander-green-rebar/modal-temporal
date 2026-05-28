@@ -61,7 +61,6 @@ def word_count(text: str) -> int:
 
 # Class based activity
 @modal_activity_cls(app, env=env, image=image)
-@modal.concurrent(max_inputs=2)
 class AddValue:
     value: int = modal.parameter()
 

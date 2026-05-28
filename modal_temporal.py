@@ -17,6 +17,7 @@ from typing import (
     TypeVar,
     Union,
     Sequence,
+    cast,
     dataclass_transform,
 )
 from modal.partial_function import PartialFunction as _ModalPartialFunction
@@ -166,7 +167,7 @@ def modal_activity(
         partial = None
         inner = None
         if isinstance(f, _ModalPartialFunction):
-            inner = getattr(f, f._sync_synchronizer._original_attr)
+            inner = getattr(f, getattr(f, "_sync_synchronizer")._original_attr)
             partial = f
             raw_f = inner.raw_f
         else:
@@ -222,7 +223,7 @@ _MODAL_NO_DEFAULT = type(modal.parameter().default)
 @dataclass_transform(field_specifiers=(modal.parameter,))
 def modal_activity_cls(
     app: modal.App, **modal_opts: Any
-) -> Callable[[type[T]], type[T]]:
+) -> Callable[[Union[type[T], _ModalPartialFunction[Any, T, T]]], type[T]]:
     """Class analogue of @modal_activity. Decorate the activity class itself: a
     runner @app.cls() is generated from its __init__ params and public async
     methods, bound into the activity's module so Modal can reference it by
@@ -236,16 +237,16 @@ def modal_activity_cls(
     Assumes bare @activity.defn on the methods => activity name == method
     __name__ (same convention as @modal_activity)."""
 
-    def decorate(cls: type[T]) -> type[T]:
+    def decorate(cls: Union[type[T], _ModalPartialFunction[Any, T, T]]) -> type[T]:
         # Unwrap Modal PartialFunction (e.g. from @modal.concurrent) to get
         # the plain class that the rest of this decorator requires.
         # When wrapping a class, PartialFunction stores it in user_cls (not raw_f).
         partial = None
         inner = None
         if isinstance(cls, _ModalPartialFunction):
-            inner = getattr(cls, cls._sync_synchronizer._original_attr)
+            inner = getattr(cls, getattr(cls, "_sync_synchronizer")._original_attr)
             partial = cls
-            cls = inner.user_cls
+            cls = cast(type[T], inner.user_cls)
 
         # Modal-style params: synthesize a dataclass __init__ so the queuer can
         # build an instance and the interceptor can read vars(instance). The
