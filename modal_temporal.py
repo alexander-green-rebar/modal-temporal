@@ -48,9 +48,10 @@ async def _auto_heartbeat_loop(
     activity_task: asyncio.Task,
 ) -> None:
     """Temporal keeps a heartbeat to make sure the activity is running."""
+    interval = heartbeat_timeout.total_seconds() / 2.0
     while True:
         try:
-            await asyncio.sleep(heartbeat_timeout.total_seconds())
+            await asyncio.sleep(interval)
             await handle.heartbeat()
             print(f"[external worker] heartbeat sent for {activity_name}")
         except asyncio.CancelledError:

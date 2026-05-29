@@ -61,7 +61,7 @@ def word_count(text: str) -> int:
 
 
 # Class based activity
-@modal_activity_cls(app, env=env, image=image)
+@modal_activity_cls(app, env=env, image=image, max_containers=5)
 class AddValue:
     value: int = modal.parameter()
 
