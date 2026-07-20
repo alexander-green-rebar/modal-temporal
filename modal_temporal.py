@@ -33,7 +33,12 @@ from temporalio.worker import (
     ActivityInboundInterceptor,
     ExecuteActivityInput,
 )
-from temporalio.client import Client, AsyncActivityHandle
+from temporalio.client import (
+    Client,
+    AsyncActivityHandle,
+    AsyncActivityCancelledError,
+    WorkflowExecutionStatus,
+)
 from async_lru import alru_cache
 
 P = ParamSpec("P")
@@ -82,6 +87,7 @@ async def _auto_heartbeat_loop(
     activity_name: str,
     heartbeat_timeout: timedelta,
     activity_task: asyncio.Task,
+    context: _Context,
 ) -> None:
     """Temporal keeps a heartbeat to make sure the activity is running."""
     interval = heartbeat_timeout.total_seconds() / 2.0
@@ -94,9 +100,22 @@ async def _auto_heartbeat_loop(
             await asyncio.sleep(interval)
         except asyncio.CancelledError:
             return
+        except AsyncActivityCancelledError as e:
+            if not (e.details and e.details.cancel_requested):
+                # Paused/reset, not a real cancel: keep the activity alive.
+                await asyncio.sleep(interval)
+                continue
+            # Set the cancelled_event so cooperative (sync) activity code sees
+            # activity.is_cancelled() and can stop, and cancel the task so async
+            # activities unwind. A non-cooperative sync activity (to_thread) runs
+            # until it returns, so keep sync activities short and cooperative to
+            # actually free the GPU on cancel.
+            print(f"[external worker] cancellation requested for {activity_name}")
+            context.cancelled_event.set()
+            activity_task.cancel()
+            return
         except Exception as e:
             print(f"[external worker] heartbeat failed: {e}")
-            # Heartbeat failure usually means Temporal cancelled or expired the activity.
             activity_task.cancel()
             return
 
@@ -163,7 +182,7 @@ async def run_activity(fn: Callable, args: Any, client: Client, info: Info):
             coro = fn(*args)
         else:
             coro = asyncio.to_thread(fn, *args)
-        return await run_activity_with_temporal(coro, fn.__name__, handle, info)
+        return await run_activity_with_temporal(coro, fn.__name__, handle, info, context)
     finally:
         _Context.reset(token)
 
@@ -173,6 +192,7 @@ async def run_activity_with_temporal(
     activity_name: str,
     handle: AsyncActivityHandle,
     info: Info,
+    context: _Context,
 ):
     activity_task = asyncio.create_task(coro)
     heartbeat_task = None
@@ -184,7 +204,7 @@ async def run_activity_with_temporal(
         await coord_dict.put.aio(_coord_key(info), _started_marker(info))
         heartbeat_task = asyncio.create_task(
             _auto_heartbeat_loop(
-                handle, activity_name, info.heartbeat_timeout, activity_task
+                handle, activity_name, info.heartbeat_timeout, activity_task, context
             )
         )
 
