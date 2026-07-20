@@ -87,9 +87,11 @@ async def _auto_heartbeat_loop(
     interval = heartbeat_timeout.total_seconds() / 2.0
     while True:
         try:
-            await asyncio.sleep(interval)
+            # Heartbeat the instant the worker takes over from the dispatcher,
+            # before the first interval elapses.
             await handle.heartbeat()
             print(f"[external worker] heartbeat sent for {activity_name}")
+            await asyncio.sleep(interval)
         except asyncio.CancelledError:
             return
         except Exception as e:
@@ -115,10 +117,11 @@ async def _dispatcher_heartbeat_loop(
     queued = _queued_marker(info)
     interval = info.heartbeat_timeout.total_seconds() / 2.0
     while True:
-        await asyncio.sleep(interval)
-        # Re-read each interval and step down once our marker is gone: the worker
-        # took over (started:<attempt>), the activity finished (key removed), or a
-        # newer attempt superseded us (queued:<attempt+1>).
+        # On a retry the dispatcher is the sole heartbeater while the container
+        # cold-starts, so heartbeat before the first sleep.
+        # Step down once our marker is gone: the worker took over
+        # (started:<attempt>), the activity finished (key removed), or a newer
+        # attempt superseded us (queued:<attempt+1>).
         if await coord_dict.get.aio(key) != queued:
             return
         try:
@@ -127,6 +130,7 @@ async def _dispatcher_heartbeat_loop(
         except Exception as e:
             print(f"[dispatcher] queued heartbeat failed for {info.activity_type}: {e}")
             return
+        await asyncio.sleep(interval)
 
 
 async def run_activity(fn: Callable, args: Any, client: Client, info: Info):
