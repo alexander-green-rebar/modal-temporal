@@ -50,12 +50,12 @@ _HEARTBEAT_COORD_DICT_NAME = "modal-temporal-heartbeat-coord"
 def _coord_key(info: Info) -> str:
     """Coordination key for an activity's heartbeat hand-off.
 
-    Stable across retries: task_token changes every attempt but activity_id does
-    not, so a crash-looping activity reuses one Dict slot instead of leaking one
-    key per attempt. Each retry's dispatcher overwrites the previous attempt's
-    stale marker, so the only residual orphan is one key per activity that
-    hard-crashes on its final attempt (modal.Dict has no TTL to expire it)."""
-    return f"{info.workflow_id}/{info.workflow_run_id}/{info.activity_id}"
+    Per-attempt: a preempted attempt's finally-cleanup (coord_dict.pop) runs
+    during Modal's SIGTERM grace and would otherwise clobber the next attempt's
+    queued marker under a stable key, leaving the retry's cold start
+    un-heartbeated. Costs one orphaned key per crashed attempt (modal.Dict has
+    no TTL)."""
+    return f"{info.workflow_id}/{info.workflow_run_id}/{info.activity_id}/{info.attempt}"
 
 
 def _queued_marker(info: Info) -> str:
