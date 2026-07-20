@@ -196,8 +196,15 @@ async def run_activity_with_temporal(
     except asyncio.CancelledError:
         await handle.report_cancellation()
         return
+    except ApplicationError as e:
+        # Preserve the activity's retry intent (e.g. non_retryable=True) rather
+        # than re-wrapping into a fresh, retryable ApplicationError.
+        await handle.fail(e)
+        print(f"[external worker] failed {activity_name}: {e}")
     except Exception as e:
-        await handle.fail(ApplicationError(str(e)))
+        # Keep the original type name so RetryPolicy.non_retryable_error_types
+        # can still match a wrapped error.
+        await handle.fail(ApplicationError(str(e), type=type(e).__name__))
         print(f"[external worker] failed {activity_name}: {e}")
     finally:
         if heartbeat_task:
