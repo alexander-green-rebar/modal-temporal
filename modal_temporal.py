@@ -545,3 +545,53 @@ async def run_dispatcher(
     )
     print(f"[dispatcher] worker on {task_queue!r}; activities run on Modal")
     await worker.run()
+
+
+async def sweep_heartbeat_coord_dict() -> int:
+    """Delete coordination keys whose workflow run is no longer running.
+
+    An attempt pops its own key on a graceful exit, but a hard-crashed attempt
+    (no finally) leaks one and modal.Dict has no TTL. A key's workflow run being
+    closed means the activity is done, so the key is safe to remove. Returns the
+    number of keys deleted."""
+    client = await get_temporal_client()
+    coord_dict = await get_heartbeat_coord_dict()
+    closed: dict[tuple[str, str], bool] = {}
+    removed = 0
+    async for key in coord_dict.keys.aio():
+        # "{workflow_id}/{run_id}/{activity_id}/{attempt}"; workflow_id may contain
+        # slashes, so recover the trailing slash-free fields from the right.
+        parts = key.rsplit("/", 3)
+        if len(parts) != 4:
+            continue
+        ident = (parts[0], parts[1])  # (workflow_id, run_id)
+        if ident not in closed:
+            try:
+                desc = await client.get_workflow_handle(
+                    ident[0], run_id=ident[1]
+                ).describe()
+                closed[ident] = (
+                    desc.status is not None
+                    and desc.status != WorkflowExecutionStatus.RUNNING
+                )
+            except Exception:
+                closed[ident] = False  # unknown: keep the key, be conservative
+        if closed[ident]:
+            await coord_dict.pop.aio(key, None)
+            removed += 1
+    return removed
+
+
+async def _run_coord_sweep() -> None:
+    removed = await sweep_heartbeat_coord_dict()
+    print(f"[sweeper] removed {removed} orphaned coordination keys")
+
+
+def register_heartbeat_coord_sweeper(
+    app: modal.App, *, schedule: Any = None, **modal_opts: Any
+):
+    """Register a scheduled Modal function on `app` that periodically sweeps
+    orphaned heartbeat-coordination keys. Pass the same secrets/env given to
+    @modal_activity so it can reach Temporal. Defaults to every 6 hours."""
+    schedule = schedule or modal.Period(hours=6)
+    return app.function(schedule=schedule, **modal_opts)(_run_coord_sweep)
